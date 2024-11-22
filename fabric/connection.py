@@ -14,16 +14,14 @@ from .exceptions import InvalidV1Env
 from .transfer import Transfer
 from .tunnels import TunnelManager, Tunnel
 
-def opens(f):
+@decorator
+def opens(f, self, *args, **kwargs):
     """
     Decorator that ensures a connection is opened before calling the function.
     """
-    @decorator
-    def wrapped(f, self, *args, **kwargs):
-        if not self.is_connected:
-            self.open()
-        return f(self, *args, **kwargs)
-    return wrapped(f)
+    if not self.is_connected:
+        self.open()
+    return f(self, *args, **kwargs)
 
 class Connection(Context):
     """
