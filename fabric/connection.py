@@ -496,7 +496,6 @@ class Connection(Context):
     def __exit__(self, *exc):
         self.close()
 
-    @opens
     def run(self, command, **kwargs):
         """
         Execute a remote command.
@@ -506,6 +505,8 @@ class Connection(Context):
 
         :returns: The result of the command execution.
         """
+        if not self.is_connected:
+            self.open()
         channel = self.transport.open_session()
         channel.settimeout(self.connect_timeout)
         channel.exec_command(command)
@@ -532,7 +533,6 @@ class Connection(Context):
         """
         pass
 
-    @opens
     def sudo(self, command, **kwargs):
         """
         Execute a command with sudo.
@@ -542,6 +542,8 @@ class Connection(Context):
 
         :returns: The result of the command execution.
         """
+        if not self.is_connected:
+            self.open()
         sudo_command = f"sudo {command}"
         return self.run(sudo_command, **kwargs)
         """
@@ -556,7 +558,6 @@ class Connection(Context):
         """
         pass
 
-    @opens
     def shell(self, **kwargs):
         """
         Open an interactive shell session on the remote end.
@@ -565,6 +566,8 @@ class Connection(Context):
 
         :returns: None
         """
+        if not self.is_connected:
+            self.open()
         channel = self.transport.open_session()
         channel.get_pty(**kwargs)
         channel.invoke_shell()
@@ -655,7 +658,6 @@ class Connection(Context):
         """
         pass
 
-    @opens
     def sftp(self):
         """
         Return a new SFTP session object.
@@ -664,6 +666,8 @@ class Connection(Context):
 
         :returns: A new SFTP session object.
         """
+        if not self.is_connected:
+            self.open()
         if self._sftp is None:
             self._sftp = self.transport.open_sftp_client()
         return self._sftp
@@ -702,7 +706,6 @@ class Connection(Context):
         pass
 
     @contextmanager
-    @opens
     def forward_local(self, local_port, remote_port=None, remote_host='localhost', local_host='localhost'):
         """
         Create a local port forward.
@@ -714,6 +717,8 @@ class Connection(Context):
 
         :returns: A new `~paramiko.channel.Channel` object.
         """
+        if not self.is_connected:
+            self.open()
         if remote_port is None:
             remote_port = local_port
 
@@ -766,7 +771,6 @@ class Connection(Context):
         pass
 
     @contextmanager
-    @opens
     def forward_remote(self, remote_port, local_port=None, remote_host='127.0.0.1', local_host='localhost'):
         """
         Create a remote port forward.
@@ -778,6 +782,8 @@ class Connection(Context):
 
         :returns: A new `~paramiko.channel.Channel` object.
         """
+        if not self.is_connected:
+            self.open()
         if local_port is None:
             local_port = remote_port
 
