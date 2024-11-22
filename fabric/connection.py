@@ -14,6 +14,15 @@ from .exceptions import InvalidV1Env
 from .transfer import Transfer
 from .tunnels import TunnelManager, Tunnel
 
+@decorator
+def opens(f, self, *args, **kwargs):
+    """
+    Decorator that ensures a connection is opened before calling the function.
+    """
+    if not self.is_connected:
+        self.open()
+    return f(self, *args, **kwargs)
+
 class Connection(Context):
     """
     A connection to an SSH daemon, with methods for commands and file transfer.
@@ -125,7 +134,36 @@ class Connection(Context):
 
         .. versionadded:: 2.4
         """
-        pass
+        # Sanity check
+        if not hasattr(env, 'get'):
+            raise InvalidV1Env("'env' must be a dict-like object!")
+
+        # Map v1 settings to v2 kwargs
+        settings = {}
+        
+        # Host connection settings
+        if env.get('host_string'):
+            settings['host'] = env['host_string']
+        if env.get('user'):
+            settings['user'] = env['user']
+        if env.get('port'):
+            settings['port'] = env['port']
+        
+        # SSH settings
+        if env.get('key_filename'):
+            settings['connect_kwargs'] = {'key_filename': env['key_filename']}
+        if env.get('forward_agent'):
+            settings['forward_agent'] = env['forward_agent']
+        if env.get('gateway'):
+            settings['gateway'] = env['gateway']
+        if env.get('connect_timeout'):
+            settings['connect_timeout'] = env['connect_timeout']
+
+        # Update with any explicit kwargs
+        settings.update(kwargs)
+
+        # Create & return
+        return cls(**settings)
 
     def __init__(self, host, user=None, port=None, config=None, gateway=None, forward_agent=None, connect_timeout=None, connect_kwargs=None, inline_ssh_env=None):
         """
@@ -355,7 +393,7 @@ class Connection(Context):
 
         .. versionadded:: 2.0
         """
-        pass
+        return self.transport is not None and self.transport.active
 
     def open(self):
         """
@@ -380,7 +418,32 @@ class Connection(Context):
             Now returns the inner Paramiko connect call's return value instead
             of always returning the implicit ``None``.
         """
-        pass
+        if self.is_connected:
+            return None
+
+        # Set up gateway if needed
+        sock = None
+        if self.gateway:
+            sock = self.open_gateway()
+
+        # Connect!
+        connect_kwargs = dict(
+            hostname=self.host,
+            port=int(self.port),
+            username=self.user,
+            timeout=self.connect_timeout,
+            sock=sock,
+            **self.connect_kwargs
+        )
+
+        result = self.client.connect(**connect_kwargs)
+        self.transport = self.client.get_transport()
+
+        # Set up agent forwarding if requested
+        if self.forward_agent:
+            self._agent_handler = AgentRequestHandler(self.transport.get_channel("session", timeout=self.connect_timeout))
+
+        return result
 
     def open_gateway(self):
         """
@@ -393,7 +456,19 @@ class Connection(Context):
 
         .. versionadded:: 2.0
         """
-        pass
+        if isinstance(self.gateway, str):
+            # ProxyCommand
+            return ProxyCommand(self.gateway)
+        else:
+            # Jump host
+            if not self.gateway.is_connected:
+                self.gateway.open()
+            chan = self.gateway.transport.open_channel(
+                'direct-tcpip',
+                (self.host, self.port),
+                ('', 0)
+            )
+            return chan
 
     def close(self):
         """
@@ -407,7 +482,21 @@ class Connection(Context):
         .. versionchanged:: 3.0
             Now closes SFTP sessions too (2.x required manually doing so).
         """
-        pass
+        if self._sftp is not None:
+            self._sftp.close()
+            self._sftp = None
+
+        if self._agent_handler is not None:
+            self._agent_handler.close()
+            self._agent_handler = None
+
+        if self.transport is not None:
+            self.transport.close()
+            self.transport = None
+
+        if self.client is not None:
+            self.client.close()
+            self.client = None
 
     def __enter__(self):
         return self
