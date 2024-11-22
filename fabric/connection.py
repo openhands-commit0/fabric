@@ -1,12 +1,3 @@
-@decorator
-def opens(f, self, *args, **kwargs):
-    """
-    Decorator that ensures a connection is opened before calling the function.
-    """
-    if not self.is_connected:
-        self.open()
-    return f(self, *args, **kwargs)
-
 from contextlib import contextmanager
 from io import StringIO
 from threading import Event
@@ -22,6 +13,15 @@ from .config import Config
 from .exceptions import InvalidV1Env
 from .transfer import Transfer
 from .tunnels import TunnelManager, Tunnel
+
+@decorator
+def opens(f, self, *args, **kwargs):
+    """
+    Decorator that ensures a connection is opened before calling the function.
+    """
+    if not self.is_connected:
+        self.open()
+    return f(self, *args, **kwargs)
 
 class Connection(Context):
     """
