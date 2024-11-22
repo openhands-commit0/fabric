@@ -13,7 +13,6 @@ from .config import Config
 from .exceptions import InvalidV1Env
 from .transfer import Transfer
 from .tunnels import TunnelManager, Tunnel
-from .decorators import opens
 
 class Connection(Context):
     """
