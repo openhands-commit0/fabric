@@ -507,6 +507,25 @@ class Connection(Context):
     @opens
     def run(self, command, **kwargs):
         """
+        Execute a remote command.
+
+        :param str command: The command to run.
+        :param kwargs: Additional keyword arguments to pass to `invoke.context.Context.run`.
+
+        :returns: The result of the command execution.
+        """
+        channel = self.transport.open_session()
+        channel.settimeout(self.connect_timeout)
+        channel.exec_command(command)
+        stdout = channel.makefile('r')
+        stderr = channel.makefile_stderr('r')
+        status = channel.recv_exit_status()
+        return {
+            'stdout': stdout.read(),
+            'stderr': stderr.read(),
+            'status': status
+        }
+        """
         Execute a shell command on the remote end of this connection.
 
         This method wraps an SSH-capable implementation of
@@ -524,6 +543,16 @@ class Connection(Context):
     @opens
     def sudo(self, command, **kwargs):
         """
+        Execute a command with sudo.
+
+        :param str command: The command to run with sudo.
+        :param kwargs: Additional keyword arguments to pass to `run`.
+
+        :returns: The result of the command execution.
+        """
+        sudo_command = f"sudo {command}"
+        return self.run(sudo_command, **kwargs)
+        """
         Execute a shell command, via ``sudo``, on the remote end.
 
         This method is identical to `invoke.context.Context.sudo` in every way,
@@ -537,6 +566,32 @@ class Connection(Context):
 
     @opens
     def shell(self, **kwargs):
+        """
+        Open an interactive shell session on the remote end.
+
+        :param kwargs: Additional keyword arguments to pass to the shell.
+
+        :returns: None
+        """
+        channel = self.transport.open_session()
+        channel.get_pty(**kwargs)
+        channel.invoke_shell()
+        channel.settimeout(None)  # Disable timeout for interactive shell
+        
+        # Forward stdin/stdout
+        try:
+            while True:
+                if channel.recv_ready():
+                    data = channel.recv(1024)
+                    if not data:
+                        break
+                    print(data.decode(), end='', flush=True)
+                if channel.exit_status_ready():
+                    break
+        except KeyboardInterrupt:
+            channel.close()
+        finally:
+            channel.close()
         """
         Run an interactive login shell on the remote end, as with ``ssh``.
 
@@ -611,6 +666,16 @@ class Connection(Context):
     @opens
     def sftp(self):
         """
+        Return a new SFTP session object.
+
+        The session object is a wrapper around Paramiko's SFTPClient class.
+
+        :returns: A new SFTP session object.
+        """
+        if self._sftp is None:
+            self._sftp = self.transport.open_sftp_client()
+        return self._sftp
+        """
         Return a `~paramiko.sftp_client.SFTPClient` object.
 
         If called more than one time, memoizes the first result; thus, any
@@ -647,6 +712,25 @@ class Connection(Context):
     @contextmanager
     @opens
     def forward_local(self, local_port, remote_port=None, remote_host='localhost', local_host='localhost'):
+        """
+        Create a local port forward.
+
+        :param local_port: Local port to forward.
+        :param remote_port: Remote port to forward to (defaults to local_port).
+        :param remote_host: Remote host to forward to (defaults to 'localhost').
+        :param local_host: Local interface to bind to (defaults to 'localhost').
+
+        :returns: A new `~paramiko.channel.Channel` object.
+        """
+        if remote_port is None:
+            remote_port = local_port
+
+        return self.transport.request_port_forward(
+            local_host,
+            local_port,
+            remote_host,
+            remote_port
+        )
         """
         Open a tunnel connecting ``local_port`` to the server's environment.
 
@@ -692,6 +776,25 @@ class Connection(Context):
     @contextmanager
     @opens
     def forward_remote(self, remote_port, local_port=None, remote_host='127.0.0.1', local_host='localhost'):
+        """
+        Create a remote port forward.
+
+        :param remote_port: Remote port to forward.
+        :param local_port: Local port to forward to (defaults to remote_port).
+        :param remote_host: Remote interface to bind to (defaults to '127.0.0.1').
+        :param local_host: Local host to forward to (defaults to 'localhost').
+
+        :returns: A new `~paramiko.channel.Channel` object.
+        """
+        if local_port is None:
+            local_port = remote_port
+
+        return self.transport.request_port_forward(
+            remote_host,
+            remote_port,
+            local_host,
+            local_port
+        )
         """
         Open a tunnel connecting ``remote_port`` to the local environment.
 
